@@ -40,7 +40,7 @@ As 110 séries e o evento avulso formam 111 registros editáveis. A exceção é
 ## Versionamento e acompanhamento
 
 - Fazer commits pequenos por entrega funcional, com validação e atualização do mapa/CHANGELOG.
-- Dados pessoais ficam fora do Git, conforme AGENTS.md. O histórico do SQLite registra cada mudança feita pela página; Git registra código e documentação.
+- Dados pessoais ficam fora do Git, conforme as [orientações do projeto](ORIENTACOES.md). O histórico do SQLite registra cada mudança feita pela página; Git registra código e documentação.
 - A interface informa salvamento, falha e conflito. Notificações externas e atualização automática entre abas ainda não estão implementadas.
 - Não há push automático ao GitHub nesta entrega.
 
