@@ -83,7 +83,8 @@
 #aba-tarefas .marco .hora{color:#f9a8c9;font-variant-numeric:tabular-nums;margin-right:6px;font-size:.82rem}
 #aba-tarefas .resto{color:var(--fraco);font-size:.78rem;margin:6px 2px 0}
 #aba-tarefas .vazio{color:var(--fraco);font-size:.88rem;margin:8px 2px 0}
-#aba-tarefas .aviso{position:fixed;left:16px;right:16px;bottom:16px;padding:12px 14px;border-radius:12px;background:#0d2240;
+/* o aviso fica acima da barra de abas, que flutua embaixo (painel/abas.py do financeiro) */
+#aba-tarefas .aviso{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));padding:12px 14px;border-radius:12px;background:#0d2240;
   border:1px solid rgba(150,180,220,.25);color:var(--texto);font-size:.9rem;box-shadow:0 12px 30px rgba(0,0,0,.4);z-index:10}
 </style>
 
