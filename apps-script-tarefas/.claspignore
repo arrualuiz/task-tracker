@@ -1,0 +1,4 @@
+# Só o código do Apps Script sobe pro Google.
+**/**
+!appsscript.json
+!*.gs

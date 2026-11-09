@@ -2,10 +2,14 @@
   "name": "task-tracker-local",
   "private": true,
   "version": "0.1.0",
-  "engines": { "node": ">=24.0.0" },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "start": "node local/server.cjs",
-    "test": "node --test local/store.test.cjs local/calendars.test.cjs",
-    "check": "node --check local/server.cjs && node --check local/store.cjs && node --check local/planner.cjs && node --check local/calendars.cjs && node --check local/google-tasks.cjs && node --check site/revisao.js && node --check site/dia.js && node --check site/calendarios.js && node --check site/tarefas.js && node --check site/mes.js"
+    "test": "node --test local/store.test.cjs local/calendars.test.cjs local/tarefas/tarefas.test.cjs",
+    "check": "node --check local/server.cjs && node --check local/store.cjs && node --check local/planner.cjs && node --check local/calendars.cjs && node --check local/google-tasks.cjs && node --check site/revisao.js && node --check site/dia.js && node --check site/calendarios.js && node --check site/tarefas.js && node --check site/mes.js && node --check local/tarefas/ler.cjs && node --check local/tarefas/aplicar.cjs && node --check local/tarefas/sincronizar.cjs",
+    "tarefas": "node local/tarefas/sincronizar.cjs",
+    "tarefas:ver": "node local/tarefas/sincronizar.cjs --ver"
   }
 }

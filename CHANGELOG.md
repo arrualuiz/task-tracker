@@ -1,5 +1,15 @@
 # Histórico do projeto
 
+## 2026-11-08 — Tarefas num lugar só: aba no site do celular, planilha e App da Web
+
+- `local/tarefas/`: leitura da lista mestra e da tabela de códigos dos projetos num formato único, com id estável (o código, ou projeto + começo do texto na lista); volta das marcações do celular pros arquivos (`[x]`, `✅ dd/mm`); `npm run tarefas` e `npm run tarefas:ver`.
+- `apps-script-tarefas/`: planilha Tarefas com App da Web protegido por chave (abas Tarefas, Marcações, Agendas e Envios); Google Tasks e Agenda lidos ao vivo; marcar uma tarefa do Google Tasks conclui lá.
+- `site/aba-tarefas.html`: aba Tarefas (Hoje, Semana, Tudo; filtros de quem faz e busca) que entra na página trancada do financeiro.
+- `scripts/instalar-timer-tarefas.sh`: timer de 10 min pro PC sincronizar.
+- Oito testes novos em `local/tarefas/tarefas.test.cjs`, com lista e tabela inventadas.
+- Arrumação da aba no mesmo dia (a primeira versão misturava tudo): Hoje com Pra fazer (até amanhã), Agenda e rotina numa linha por evento e Comecei e parei com as 5 mais antigas; avisos, compras e feitas fechados; Semana só com prazos e compromissos; Tudo por projeto, fechado. Tipo de cada agenda e lista na planilha (abas Agendas e Listas), a planilha no fuso de São Paulo e o id do evento pelo começo de verdade (viagem de vários dias marcada uma vez fica marcada).
+- Tipo "lembrança" pras agendas de datas que eu guardo (a 💘): aparece no topo do dia e na semana, sem caixa e sem contar como tarefa.
+
 ## 2026-09-14 — Limpeza de credenciais e meta descriptions
 
 - Credenciais reais (SPREADSHEET_ID e SECRET_TOKEN) removidas do `apps-script/Code.gs`, substituídas por placeholders com instruções de preenchimento. O histórico do Git ainda contém os valores anteriores.

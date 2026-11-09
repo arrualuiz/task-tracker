@@ -9,6 +9,18 @@ Criar e acompanhar tarefas no computador e no Chrome do iPhone 11, sem instalar 
 
 ## O que existe no código
 
+### Entrega atual: Tarefas num lugar só (08/11/2026)
+
+**Implementado:** a aba ✅ Tarefas na página do celular do financeiro (mesmo endereço, mesma senha), a planilha Tarefas com o App da Web (`apps-script-tarefas/`) e a sincronização do PC (`local/tarefas/`). Fontes: a lista mestra, a tabela de códigos do financeiro (a seção do financeiro na lista fica de fora, porque a tabela já junta as abertas de lá), o Google Tasks e a Agenda, lidos ao vivo pelo Apps Script. Marcar no celular: Google Tasks conclui lá; lista e tabela ficam na aba Marcações até o PC escrever no arquivo; Agenda fica só na planilha.
+
+**Decisões:** a lista manda (a planilha é o caminho, não a verdade); o App da Web é aberto e protegido por chave, porque o celular chama sem login do Google; a chave vai dentro da página trancada. As 111 rotinas importadas em setembro não entram: elas vieram da Agenda, que agora é lida ao vivo.
+
+**Arrumação (08/11, depois de ver no celular):** cada agenda e cada lista do Google Tasks tem um tipo na planilha (tarefa, rotina, aviso ou lembrança; tarefa ou compra), chutado pelo nome na primeira vez. Hoje mostra só o que tem prazo até amanhã, a agenda e a rotina do dia e as 5 paradas há mais tempo; avisos, compras e feitas ficam fechados. O "Nunca comecei" fica no Tudo.
+
+**Feito em 08/11:** script autorizado, timer do PC ligado (10 min), primeira marcação do celular registrada.
+
+**Falta:** marcar uma tarefa da lista no iPhone e ver o `[x]` chegar no arquivo; acertar os tipos na planilha se o chute errou.
+
 ### Entrega atual: Visão integrada de Mês Completo, Mês Reduzido e Semana com rotinas diárias (12/09/2026)
 
 A aba **Mês & Semana** (`/mes`, `site/mes.html`, `mes.js`, `mes.css`) integra três visões complementares na mesma tela:

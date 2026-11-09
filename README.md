@@ -2,6 +2,14 @@
 
 ## Continuidade do projeto
 
+**Tarefas num lugar só (08/11/2026):** tarefa é tarefa, venha de onde vier. A aba **✅ Tarefas** da página do celular (o mesmo endereço e a mesma senha do financeiro, com o cabeçalho 💰 Financeiro | ✅ Tarefas) junta a lista mestra, a tabela de códigos do financeiro, o Google Tasks e a Agenda, nas visões Hoje, Semana e Tudo, e cada tarefa tem uma caixa pra marcar. Como funciona:
+
+- `apps-script-tarefas/`: a planilha **Tarefas** com o App da Web. Guarda a lista que o PC manda e as marcações do celular, e lê o Google Tasks e a Agenda ao vivo. Na aba **Agendas** eu escolho quais agendas entram e o **Tipo** de cada uma (tarefa, rotina, aviso ou lembrança); na aba **Listas**, o tipo de cada lista do Google Tasks (tarefa ou compra). O tipo decide onde a tarefa aparece no site: aviso e compra ficam fechados, rotina vai pra agenda do dia e lembrança (uma data que eu guardo, como as da agenda 💘) aparece no topo do dia sem caixa de marcar, porque não é tarefa. Subir mudança: `cd apps-script-tarefas && clasp push && clasp redeploy <id do deployment>`.
+- `local/tarefas/`: `npm run tarefas` lê os arquivos, passa pra eles o que eu marquei no celular (a lista manda: o PC escreve o `[x] ✅ dd/mm`) e manda as abertas pra planilha. `npm run tarefas:ver` mostra o resumo sem internet. O timer liga com `scripts/instalar-timer-tarefas.sh` (a cada 10 min).
+- `site/aba-tarefas.html`: o desenho da aba. Quem põe ela na página é o `painel/abas.py` do financeiro, a cada publicação.
+- A chave e o endereço ficam em `~/.config/task-tracker/tarefas.json` e no `apps-script-tarefas/Segredo.gs`, os dois fora do git (`npm run tarefas -- --configurar` cria a chave).
+- Primeira vez: no editor do script, rodar a função `autorizar` e aceitar as permissões (planilha, Agenda só leitura e Google Tasks). Até isso, a aba abre com a foto que o PC mandou junto na página.
+
 **Google Tasks:** a aba http://localhost:3210/tarefas consulta tarefas por conta e lista, com busca e filtros de situação. Ative a Google Tasks API no mesmo projeto e clique em **Autorizar Google Tasks**; o JSON já configurado é reaproveitado. Calendários agora aceita até 200 agendas por consulta.
 
 **Calendários Google:** a aba http://localhost:3210/calendarios tem configuração guiada do projeto OAuth, conexão por conta e consulta dos eventos. Veja o [guia de integração](docs/INTEGRACAO-GOOGLE-CALENDAR.md). A conexão real requer que você configure o cliente Google e autorize cada conta; os acessos desta conversa e do site são independentes.

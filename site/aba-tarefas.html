@@ -1,0 +1,426 @@
+<!--
+  Aba Tarefas da página do celular (o mesmo endereço e a mesma senha do financeiro).
+
+  Este arquivo é um pedaço de página: o publicar do financeiro (painel/abas.py) põe ele dentro da página trancada,
+  com window.TAREFAS = { url, token, foto } logo antes. Por isso o CSS vale só dentro de #aba-tarefas.
+
+  De onde vem cada tarefa (tudo é tarefa, com uma caixa pra marcar):
+  - a lista mestra e as tabelas dos projetos: pelo PC, que manda pra planilha a cada 10 min;
+  - o Google Tasks e a Agenda: ao vivo, lidos pelo Apps Script quando a aba abre.
+  A aba abre com a foto que veio junto na página e troca pelo que o App da Web devolver ("ao vivo").
+
+  Arrumação (08/11, depois de ver a primeira versão "muito bagunçada"): o tipo de cada agenda e de cada lista do
+  Google Tasks vem da planilha (abas Agendas e Listas) e decide onde a tarefa aparece:
+  - Hoje: "Pra fazer" (passou do prazo, prazo hoje ou amanhã), "Agenda e rotina" (os eventos do dia, uma linha cada),
+    "Comecei e parei" (as 5 paradas há mais tempo; o resto num toque), e fechados: avisos do dia (calendário da
+    faculdade, corrida), compras pra hoje e amanhã e o que já marquei;
+  - Semana: dia a dia, só o que tem prazo e os compromissos; rotina e avisos viram uma contagem;
+  - Tudo: por projeto, fechado, com 🛒 Compras no fim. "Nunca comecei" mora aqui.
+  Lembrança (tipo da agenda, como a 💘) não é tarefa: aparece no topo do dia, sem caixa, e não conta em nada.
+  Cada linha mostra o título, o prazo ou há quanto tempo parou, e o próximo passo em uma linha. Tocar no texto mostra
+  o resto (o "Falta" inteiro, as notas, o grupo e quem faz).
+
+  Marcar: a caixa muda na hora e o App da Web registra. Do Google Tasks, conclui lá; da lista, fica na planilha até o
+  PC escrever o [x] no arquivo (a lista manda); da Agenda, fica só na planilha. Se a chamada falhar, a caixa volta.
+  O dia vai até as 5h, como na lista.
+-->
+<style>
+#aba-tarefas{--fundo-card:linear-gradient(145deg,rgba(21,35,59,.88),rgba(9,16,31,.82));--borda:rgba(150,180,220,.12);
+  --texto:#eef6ff;--fraco:#9fb6d0;--azul:#2b6fb3;--claro:#9dbff9;--verde:#4ade80;--vermelho:#f87171;--laranja:#fbbf24}
+#aba-tarefas h1{font-size:1.3rem;margin:0;color:#fff}
+#aba-tarefas .estado{color:var(--fraco);font-size:.75rem;margin-top:2px;min-height:1.1em}
+#aba-tarefas .estado.erro{color:var(--laranja)}
+/* visões: três botões grandes; embaixo, a busca e o "só as minhas" na mesma linha */
+#aba-tarefas .seg{display:flex;gap:6px;margin-top:12px}
+#aba-tarefas .seg button{flex:1;padding:9px 6px;border-radius:10px;border:1px solid rgba(150,180,220,.18);
+  background:transparent;color:var(--fraco);font:inherit;font-size:.92rem;white-space:nowrap}
+#aba-tarefas .seg button[aria-pressed=true]{background:var(--azul);border-color:var(--azul);color:#fff}
+#aba-tarefas .seg .n{opacity:.8;margin-left:5px;font-size:.8em}
+#aba-tarefas .busca{display:flex;gap:6px;margin-top:8px}
+#aba-tarefas .busca input{flex:1;min-width:0;box-sizing:border-box;padding:9px 12px;font:inherit;font-size:1rem;
+  color:var(--texto);background:rgba(13,21,38,.7);border:1px solid rgba(150,180,220,.25);border-radius:10px}
+#aba-tarefas .busca button{flex:none;padding:0 12px;border-radius:10px;border:1px solid rgba(150,180,220,.18);
+  background:transparent;color:var(--fraco);font:inherit;font-size:.85rem}
+#aba-tarefas .busca button[aria-pressed=true]{background:var(--azul);border-color:var(--azul);color:#fff}
+/* grupos: o título abre e fecha (details), com a contagem do lado */
+#aba-tarefas details{margin-top:16px}
+#aba-tarefas summary{cursor:pointer;list-style:none;display:block;color:#fff;font-weight:600;font-size:.98rem;line-height:1.35}
+#aba-tarefas summary::-webkit-details-marker{display:none}
+#aba-tarefas summary::before{content:"▸";display:inline-block;margin-right:8px;color:var(--fraco);transition:transform .15s}
+#aba-tarefas details[open]>summary::before{transform:rotate(90deg)}
+#aba-tarefas summary .n{color:var(--fraco);font-weight:400;font-size:.82rem;margin-left:6px}
+#aba-tarefas summary .sub{color:var(--fraco);font-weight:400;font-size:.78rem;float:right;margin-top:2px}
+#aba-tarefas details.quieto>summary{color:var(--fraco);font-weight:500;font-size:.9rem}
+#aba-tarefas ul{list-style:none;margin:8px 0 0;padding:0;border-radius:13px;overflow:hidden;background:var(--fundo-card);border:1px solid var(--borda)}
+#aba-tarefas li{display:flex;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(150,180,220,.08)}
+#aba-tarefas li:last-child{border-bottom:0}
+#aba-tarefas li input{width:20px;height:20px;margin:1px 0 0;flex:none;accent-color:var(--verde)}
+#aba-tarefas li .corpo{min-width:0;flex:1}
+/* o título ocupa no máximo duas linhas; tocar abre o resto */
+#aba-tarefas li .txt{color:var(--texto);font-size:.93rem;line-height:1.3;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#aba-tarefas li .txt strong{color:var(--claro);font-weight:600}
+#aba-tarefas li .txt code{font-size:.85em;color:var(--claro)}
+#aba-tarefas li .meta{color:var(--fraco);font-size:.75rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#aba-tarefas li .meta .prazo{color:var(--laranja)}#aba-tarefas li .meta .atraso{color:var(--vermelho)}
+#aba-tarefas li .passo{color:var(--fraco);font-size:.78rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#aba-tarefas li .mais{display:none;color:var(--fraco);font-size:.8rem;margin-top:6px;line-height:1.35;overflow-wrap:anywhere}
+#aba-tarefas li .mais a,#aba-tarefas li .txt a{color:var(--claro)}
+#aba-tarefas li.aberta .txt{-webkit-line-clamp:unset;display:block}
+#aba-tarefas li.aberta .passo{display:none}
+#aba-tarefas li.aberta .mais{display:block}
+/* linha curta: evento da agenda, aviso, compra (hora + título numa linha) */
+#aba-tarefas li.curta{padding:7px 12px}
+#aba-tarefas li.curta .txt{-webkit-line-clamp:1;font-size:.9rem}
+#aba-tarefas li .hora{color:var(--claro);font-variant-numeric:tabular-nums;margin-right:6px;font-size:.85rem}
+#aba-tarefas li.feita .txt{text-decoration:line-through;color:var(--fraco)}
+#aba-tarefas li.indo{opacity:.55}
+#aba-tarefas .ver-mais{display:block;width:100%;padding:9px;border:0;border-top:1px solid rgba(150,180,220,.08);
+  background:transparent;color:var(--claro);font:inherit;font-size:.85rem}
+/* lembrança: uma data que eu guardo, sem caixa de marcar */
+#aba-tarefas .marco{margin-top:8px;padding:7px 12px;border-radius:10px;border-left:3px solid #f472b6;
+  background:rgba(244,114,182,.08);color:#f9d0e0;font-size:.86rem;line-height:1.3}
+#aba-tarefas .marco .hora{color:#f9a8c9;font-variant-numeric:tabular-nums;margin-right:6px;font-size:.82rem}
+#aba-tarefas .resto{color:var(--fraco);font-size:.78rem;margin:6px 2px 0}
+#aba-tarefas .vazio{color:var(--fraco);font-size:.88rem;margin:8px 2px 0}
+#aba-tarefas .aviso{position:fixed;left:16px;right:16px;bottom:16px;padding:12px 14px;border-radius:12px;background:#0d2240;
+  border:1px solid rgba(150,180,220,.25);color:var(--texto);font-size:.9rem;box-shadow:0 12px 30px rgba(0,0,0,.4);z-index:10}
+</style>
+
+<h1>Tarefas</h1>
+<div class="estado" id="tf-estado">Abrindo…</div>
+<div class="seg" id="tf-visao"></div>
+<div class="busca">
+  <input type="search" id="tf-busca" placeholder="Buscar" autocomplete="off">
+  <button type="button" id="tf-minhas" aria-pressed="false">🙋 Só as minhas</button>
+</div>
+<div id="tf-lista"></div>
+<div class="aviso" id="tf-aviso" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+  const CFG = window.TAREFAS || {};
+  const raiz = document.getElementById('aba-tarefas');
+  const $ = id => document.getElementById(id);
+  const GUARDA = 'tarefas:v2';
+  const ATUALIZAR_A_CADA = 2 * 60e3;
+  const PARADAS_A_MOSTRAR = 5;
+
+  /* ---------- estado ---------- */
+
+  const PADRAO = { visao: 'hoje', minhas: false, busca: '', fechados: {}, todas: {} };
+  let estado = (() => { try { return { ...PADRAO, ...JSON.parse(localStorage.getItem(GUARDA) || '{}') }; } catch { return { ...PADRAO }; } })();
+  const guardar = () => { try { localStorage.setItem(GUARDA, JSON.stringify(estado)); } catch { /* sem armazenamento: tudo bem */ } };
+
+  // começa com a foto que veio na página; "listar" troca pelo ao vivo
+  let dados = {
+    tarefas: (CFG.foto && CFG.foto.tarefas) || [], google: [], agenda: [], marcas: {},
+    enviadoEm: (CFG.foto && CFG.foto.geradoEm) || '', vivo: false, avisos: [],
+  };
+  const indo = {}; // id → feita, enquanto a marcação está a caminho
+
+  /* ---------- datas (o dia vai até as 5h) ---------- */
+
+  const DIA = 864e5;
+  const isoLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const hojeData = () => { const d = new Date(Date.now() - 5 * 3600e3); d.setHours(0, 0, 0, 0); return d; };
+  const deIso = s => { const [a, m, d] = s.split('-').map(Number); return new Date(a, m - 1, d); };
+  const diasEntre = (a, b) => Math.round((deIso(b) - deIso(a)) / DIA);
+  const maisDias = (iso, n) => isoLocal(new Date(deIso(iso).getTime() + n * DIA));
+  const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  const ddmm = s => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+  const quandoFoi = iso => {
+    if (!iso) return '';
+    const d = new Date(iso), h = `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+    return isoLocal(d) === isoLocal(new Date()) ? `hoje às ${h}` : `${ddmm(isoLocal(d))} às ${h}`;
+  };
+
+  /* ---------- texto ---------- */
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const norm = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // Markdown leve da lista: `código`, **negrito**, ~~riscado~~ e [links](https://...). Link de arquivo vira só o texto.
+  function md(s) {
+    let h = esc(s);
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    h = h.replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1');
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/~~(.+?)~~/g, '<s>$1</s>');
+    return h;
+  }
+  const semMd = s => String(s).replace(/\*\*|~~|`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  // título do Google Tasks que é só um link: mostra o site ("www.useti.shop")
+  const titulo = t => (t.origem === 'google' && /^https?:\/\/\S+$/.test(t.texto)) ? t.texto.replace(/^https?:\/\/([^/]+).*/, '$1') : t.texto;
+  // nota do Google Tasks que só repete o título não aparece
+  const notas = t => {
+    const n = (t.falta || '').trim();
+    return t.origem === 'google' && norm(n).startsWith(norm(t.texto).slice(0, 25)) ? n.slice(t.texto.length).trim() : n;
+  };
+  const curto = (s, n) => s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+
+  /* ---------- o que é cada tarefa ---------- */
+
+  const todas = () => [...dados.tarefas, ...dados.google, ...dados.agenda];
+  // tarefa · rotina · aviso (agenda) · compra (lista de compras do Google Tasks)
+  const tipo = t => t.origem === 'agenda' ? (t.tipo || 'tarefa') : t.origem === 'google' && t.tipo === 'compra' ? 'compra' : 'tarefa';
+  function estaFeita(t) {
+    if (t.id in indo) return indo[t.id];
+    const m = dados.marcas[t.id];
+    return m ? m.feita : false;
+  }
+  function passa(t) {
+    if (estado.minhas && !(t.quem.includes('🙋') || t.origem === 'google' || t.origem === 'agenda')) return false;
+    if (estado.busca) {
+      const alvo = norm([t.texto, t.falta, t.proximo, t.projeto, t.grupo].join(' '));
+      if (!norm(estado.busca).split(/\s+/).filter(Boolean).every(w => alvo.includes(w))) return false;
+    }
+    return true;
+  }
+  const porPrazo = (a, b) => a.prazo.localeCompare(b.prazo);
+  const porHora = (a, b) => (a.hora || '').localeCompare(b.hora || '');
+
+  /**
+   * Os grupos de cada visão: [{ chave, titulo, itens, aberto, quieto, curta, limite, sub, resto }].
+   * quieto: título apagado (o que não pede ação); curta: linhas de uma linha; limite: mostra só os primeiros.
+   */
+  function grupos() {
+    const hoje = isoLocal(hojeData()), amanha = maisDias(hoje, 1);
+    const ts = todas().filter(passa);
+    const abertas = ts.filter(t => !estaFeita(t));
+    const feitas = ts.filter(t => estaFeita(t) && (t.origem !== 'agenda' || t.prazo === hoje));
+    const deTarefa = abertas.filter(t => tipo(t) === 'tarefa');
+
+    if (estado.visao === 'hoje') {
+      const ev = abertas.filter(t => t.origem === 'agenda' && t.prazo === hoje);
+      const fazer = deTarefa.filter(t => t.prazo && t.prazo <= amanha && !(t.origem === 'agenda' && t.hora)).sort(porPrazo);
+      const agenda = ev.filter(t => tipo(t) === 'rotina' || (tipo(t) === 'tarefa' && t.hora)).sort(porHora);
+      const paradas = deTarefa.filter(t => t.situacao === 'comecada' && !(t.prazo && t.prazo <= amanha))
+        .sort((a, b) => (a.comecou || '').localeCompare(b.comecou || ''));
+      const compras = abertas.filter(t => tipo(t) === 'compra' && t.prazo && t.prazo <= amanha).sort(porPrazo);
+      const lembrancas = ts.filter(t => tipo(t) === 'lembrança' && t.prazo === hoje).sort(porHora);
+      return [
+        { chave: 'marcos', marcos: lembrancas, itens: [] },
+        { chave: 'fazer', titulo: 'Pra fazer', sub: 'passou do prazo, hoje e amanhã', itens: fazer, aberto: true, vazio: 'Nada com prazo até amanhã. 🎉' },
+        { chave: 'agenda', titulo: `Agenda e rotina de ${SEMANA[hojeData().getDay()]} ${ddmm(hoje)}`, itens: agenda, aberto: true, curta: true },
+        { chave: 'paradas', titulo: 'Comecei e parei', sub: 'as paradas há mais tempo', itens: paradas, aberto: true, limite: PARADAS_A_MOSTRAR },
+        { chave: 'avisos', titulo: 'Avisos do dia', itens: ev.filter(t => tipo(t) === 'aviso'), aberto: false, quieto: true, curta: true },
+        { chave: 'compras', titulo: '🛒 Compras pra hoje e amanhã', itens: compras, aberto: false, quieto: true, curta: true },
+        { chave: 'feitas', titulo: 'Feitas', itens: feitas, aberto: false, quieto: true, curta: true },
+      ];
+    }
+    if (estado.visao === 'semana') {
+      const saida = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(hojeData().getTime() + i * DIA), dia = isoLocal(d);
+        const doDia = abertas.filter(t => t.prazo === dia);
+        const itens = [
+          ...(i === 0 ? deTarefa.filter(t => t.prazo && t.prazo < hoje).sort(porPrazo) : []),
+          ...doDia.filter(t => t.origem === 'agenda' && tipo(t) === 'tarefa').sort(porHora),
+          ...doDia.filter(t => t.origem !== 'agenda' && tipo(t) === 'tarefa'),
+        ];
+        const rotina = doDia.filter(t => tipo(t) === 'rotina').length, avisos = doDia.filter(t => tipo(t) === 'aviso').length;
+        const resto = [rotina && `${rotina} da rotina`, avisos && `${avisos} aviso${avisos > 1 ? 's' : ''}`].filter(Boolean).join(' · ');
+        const marcos = ts.filter(t => tipo(t) === 'lembrança' && t.prazo === dia).sort(porHora);
+        saida.push({ chave: 's' + i, titulo: i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : SEMANA[d.getDay()], sub: ddmm(dia), itens, marcos, aberto: true, resto: resto && `+ ${resto}`, vazio: marcos.length ? '' : 'Nada com prazo.' });
+      }
+      return saida;
+    }
+    // tudo: por projeto, na ordem em que aparecem; dentro, as começadas primeiro (paradas há mais tempo no topo)
+    const mapa = new Map();
+    const peso = t => t.situacao === 'comecada' ? 0 : t.prazo ? 1 : t.situacao === 'sem' ? 2 : 3;
+    for (const t of abertas.filter(t => t.origem !== 'agenda' && tipo(t) === 'tarefa')) {
+      const k = `${t.emoji ? t.emoji + ' ' : ''}${t.projeto}`;
+      if (!mapa.has(k)) mapa.set(k, []);
+      mapa.get(k).push(t);
+    }
+    const saida = [...mapa].map(([titulo, itens]) => ({
+      chave: 'p:' + titulo, titulo, aberto: false, semProjeto: true,
+      itens: itens.sort((a, b) => peso(a) - peso(b) || (a.comecou || '').localeCompare(b.comecou || '') || (a.prazo || '').localeCompare(b.prazo || '')),
+    }));
+    const compras = abertas.filter(t => tipo(t) === 'compra');
+    if (compras.length) saida.push({ chave: 'p:compras', titulo: '🛒 Compras', itens: compras, aberto: false, curta: true, quieto: true });
+    return saida;
+  }
+
+  /* ---------- desenho ---------- */
+
+  function botoes(id, campo, opcoes) {
+    $(id).innerHTML = opcoes.map(([v, rot, n]) =>
+      `<button type="button" data-v="${v}" aria-pressed="${estado[campo] === v}">${rot}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('');
+  }
+
+  function prazoTexto(t, hoje) {
+    if (!t.prazo || t.origem === 'agenda') return '';
+    const n = diasEntre(hoje, t.prazo);
+    const txt = n < 0 ? `prazo era ${ddmm(t.prazo)}` : n === 0 ? 'prazo hoje' : n === 1 ? 'prazo amanhã' : `até ${ddmm(t.prazo)}`;
+    return `<span class="${n < 0 ? 'atraso' : 'prazo'}">${txt}</span>`;
+  }
+
+  function linha(t, g) {
+    const hoje = isoLocal(hojeData());
+    const feita = estaFeita(t);
+    const curta = g.curta || t.origem === 'agenda';
+    const hora = t.origem === 'agenda' ? `<span class="hora">${t.hora ? esc(t.hora) : 'dia todo'}</span>` : '';
+
+    // a linha de baixo: no máximo o prazo (ou há quanto tempo parou) e de onde é
+    const meta = [];
+    const pz = prazoTexto(t, hoje);
+    if (pz) meta.push(pz);
+    else if (t.situacao === 'comecada' && t.comecou) {
+      const n = diasEntre(t.comecou, hoje);
+      meta.push(n <= 0 ? 'comecei hoje' : n === 1 ? 'parada desde ontem' : `parada há ${n} dias`);
+    }
+    if (!g.semProjeto) meta.push(esc(curto(`${t.emoji ? t.emoji + ' ' : ''}${t.projeto}`, 30)));
+    if (feita) {
+      const m = dados.marcas[t.id];
+      meta.push(esc(m && m.estado ? m.estado : t.origem === 'google' || t.origem === 'agenda' ? 'marcada' : 'vai pra lista quando o PC sincronizar'));
+    }
+
+    // o resto, que aparece ao tocar
+    const n = notas(t);
+    const mais = [
+      t.falta && t.origem !== 'google' ? `<b>Falta:</b> ${md(t.falta)}` : '',
+      n && t.origem === 'google' ? `<b>Notas:</b> ${md(n)}` : '',
+      t.proximo ? `<b>Próximo passo:</b> ${md(t.proximo)}` : '',
+      esc([t.projeto, t.grupo, t.quem, t.situacao === 'decidir' ? '❓ decidir' : t.situacao === 'ideia' ? '💡 ideia' : ''].filter(Boolean).join(' · ')),
+      t.origem === 'agenda' && t.ate ? `${esc(t.hora)} até ${esc(t.ate)}` : '',
+    ].filter(Boolean).map(x => `<div>${x}</div>`).join('');
+    // o próximo passo numa linha, pra tarefa curta como "Até 09/11, PUCPR." fazer sentido sem tocar
+    const passo = !curta && (t.falta && t.origem !== 'google' ? t.falta : t.proximo);
+
+    return `<li data-id="${esc(t.id)}" class="${curta ? 'curta' : ''} ${feita ? 'feita' : ''} ${t.id in indo ? 'indo' : ''}">
+      <input type="checkbox" ${feita ? 'checked' : ''} aria-label="Marcar como feita">
+      <div class="corpo"><div class="txt">${hora}${md(titulo(t))}</div>
+      ${!curta && meta.length ? `<div class="meta">${meta.join(' · ')}</div>` : ''}
+      ${passo ? `<div class="passo">→ ${esc(semMd(passo))}</div>` : ''}
+      <div class="mais">${curta && meta.length ? `<div>${meta.join(' · ')}</div>` : ''}${mais}</div></div></li>`;
+  }
+
+  function desenhar() {
+    const gs = grupos();
+    const conta = chave => (gs.find(g => g.chave === chave) || { itens: [] }).itens.length;
+    const hoje = isoLocal(hojeData());
+    const ts = todas().filter(t => passa(t) && !estaFeita(t) && tipo(t) === 'tarefa');
+    botoes('tf-visao', 'visao', [
+      ['hoje', 'Hoje', estado.visao === 'hoje' ? conta('fazer') : ts.filter(t => t.prazo && t.prazo <= maisDias(hoje, 1) && !(t.origem === 'agenda' && t.hora)).length],
+      ['semana', 'Semana', ts.filter(t => t.prazo && t.prazo <= maisDias(hoje, 6)).length],
+      ['tudo', 'Tudo', ts.filter(t => t.origem !== 'agenda').length],
+    ]);
+    $('tf-minhas').setAttribute('aria-pressed', estado.minhas);
+
+    const marco = t => `<div class="marco">${t.hora ? `<span class="hora">${esc(t.hora)}</span>` : ''}${md(t.texto)}</div>`;
+    const mostrar = gs.filter(g => g.itens.length || g.vazio || g.resto || (g.marcos && g.marcos.length));
+    if (!mostrar.length) { $('tf-lista').innerHTML = `<p class="vazio">${estado.busca ? 'Nada com essa busca.' : 'Nada aqui. 🎉'}</p>`; return; }
+    $('tf-lista').innerHTML = mostrar.map(g => {
+      // só lembranças (o topo do Hoje): sem grupo em volta
+      if (g.chave === 'marcos') return g.marcos.map(marco).join('');
+      const aberto = g.chave in estado.fechados ? !estado.fechados[g.chave] : g.aberto;
+      const todosVisiveis = !g.limite || estado.todas[g.chave] || g.itens.length <= g.limite;
+      const itens = todosVisiveis ? g.itens : g.itens.slice(0, g.limite);
+      const lista = g.itens.length
+        ? `<ul>${itens.map(t => linha(t, g)).join('')}${todosVisiveis ? '' : `<button type="button" class="ver-mais" data-todas="${esc(g.chave)}">Mostrar as outras ${g.itens.length - g.limite}</button>`}</ul>`
+        : g.vazio ? `<p class="vazio">${g.vazio}</p>` : '';
+      return `<details data-g="${esc(g.chave)}" class="${g.quieto ? 'quieto' : ''}" ${aberto ? 'open' : ''}>
+        <summary>${esc(g.titulo)}<span class="n">${g.itens.length || ''}</span>${g.sub ? `<span class="sub">${esc(g.sub)}</span>` : ''}</summary>
+        ${(g.marcos || []).map(marco).join('')}${lista}${g.resto ? `<p class="resto">${esc(g.resto)}</p>` : ''}</details>`;
+    }).join('');
+  }
+
+  function mostrarEstado() {
+    const partes = [];
+    if (dados.vivo) partes.push(`Ao vivo · a lista do PC chegou ${quandoFoi(dados.enviadoEm) || 'ainda não'}`);
+    else if (dados.enviadoEm) partes.push(`Foto de ${quandoFoi(dados.enviadoEm)}${CFG.url && !dados.erro ? ' · buscando o ao vivo…' : ''}`);
+    if (dados.erro) partes.push(dados.erro);
+    for (const a of dados.avisos || []) partes.push(a);
+    $('tf-estado').textContent = partes.join(' · ') || 'Sem tarefas ainda.';
+    $('tf-estado').classList.toggle('erro', Boolean(dados.erro || (dados.avisos || []).length));
+  }
+
+  let avisoTimer;
+  function aviso(msg) {
+    const el = $('tf-aviso');
+    el.textContent = msg; el.hidden = false;
+    clearTimeout(avisoTimer); avisoTimer = setTimeout(() => { el.hidden = true; }, 3500);
+  }
+
+  /* ---------- App da Web ---------- */
+
+  async function chamar(acao, extra) {
+    // text/plain e sem cabeçalhos próprios: o pedido é "simples" e o Apps Script responde sem preflight
+    const r = await fetch(CFG.url, { method: 'POST', body: JSON.stringify({ acao, token: CFG.token, ...extra }) });
+    const j = await r.json();
+    if (j.erro) throw new Error(j.erro);
+    return j;
+  }
+
+  let carregando = false, ultimaCarga = 0;
+  async function carregar() {
+    if (!CFG.url || carregando) return;
+    carregando = true;
+    try {
+      const j = await chamar('listar');
+      dados = { ...j, vivo: true, erro: '' };
+      ultimaCarga = Date.now();
+    } catch (e) {
+      dados.erro = 'sem conexão com o Google agora';
+    } finally {
+      carregando = false;
+      mostrarEstado(); desenhar();
+    }
+  }
+
+  async function marcar(t, feita) {
+    if (!CFG.url) { aviso('O App da Web ainda não está configurado: a marcação não foi guardada.'); desenhar(); return; }
+    indo[t.id] = feita; desenhar();
+    try {
+      const extra = { id: t.id, feita, texto: semMd(t.texto) };
+      if (t.origem === 'google') Object.assign(extra, { lista: t.lista, tarefa: t.tarefa });
+      const r = await chamar('marcar', extra);
+      dados.marcas = { ...dados.marcas, [t.id]: { feita, quando: r.quando, estado: r.estado } };
+      if (feita) aviso(t.origem === 'google' ? 'Concluída no Google Tasks. Está em "Feitas".' : t.origem === 'agenda' ? 'Marcada. Está em "Feitas".' : 'Marcada. Vai pra lista quando o PC sincronizar.');
+    } catch (e) {
+      aviso(`Não deu pra marcar: ${e.message}`);
+    } finally {
+      delete indo[t.id]; desenhar();
+    }
+  }
+
+  /* ---------- eventos ---------- */
+
+  raiz.addEventListener('click', e => {
+    const b = e.target.closest('#tf-visao button');
+    if (b) { estado.visao = b.dataset.v; guardar(); desenhar(); window.scrollTo(0, 0); return; }
+    if (e.target.closest('#tf-minhas')) { estado.minhas = !estado.minhas; guardar(); desenhar(); return; }
+    const vm = e.target.closest('.ver-mais');
+    if (vm) { estado.todas[vm.dataset.todas] = true; guardar(); desenhar(); return; }
+    const corpo = e.target.closest('li .corpo');
+    if (corpo && !e.target.closest('a')) corpo.parentElement.classList.toggle('aberta');
+  });
+  raiz.addEventListener('change', e => {
+    const li = e.target.closest('li[data-id]');
+    if (!li || e.target.type !== 'checkbox') return;
+    const t = todas().find(x => x.id === li.dataset.id);
+    if (t) marcar(t, e.target.checked);
+  });
+  raiz.addEventListener('toggle', e => {
+    const d = e.target.closest('details[data-g]');
+    if (d) { estado.fechados[d.dataset.g] = !d.open; guardar(); }
+  }, true);
+  $('tf-busca').value = estado.busca;
+  $('tf-busca').addEventListener('input', e => { estado.busca = e.target.value; guardar(); desenhar(); });
+
+  // só busca o ao vivo quando a aba está na tela (o cabeçalho avisa com o evento "aba")
+  let naTela = false;
+  document.addEventListener('aba', e => {
+    naTela = e.detail === 'tarefas';
+    if (naTela && Date.now() - ultimaCarga > 30e3) carregar();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (naTela && document.visibilityState === 'visible' && Date.now() - ultimaCarga > 30e3) carregar();
+  });
+  setInterval(() => { if (naTela && document.visibilityState === 'visible') carregar(); }, ATUALIZAR_A_CADA);
+
+  mostrarEstado(); desenhar();
+})();
+</script>
