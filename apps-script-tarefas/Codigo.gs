@@ -4,9 +4,10 @@
  * Quem chama e pra quê (sempre POST com {acao, token, ...} em text/plain, pra o navegador não pedir "preflight"):
  * - o PC, a cada 10 min (local/tarefas/sincronizar.cjs):
  *     "pendentes" → as marcações do celular que ainda não chegaram nos arquivos;
- *     "enviar"    → as tarefas abertas da lista mestra e das tabelas dos projetos, e quais marcações entraram;
+ *     "enviar"    → as tarefas abertas da lista mestra e das tabelas dos projetos, quais marcações entraram e os
+ *                   nomes dos níveis de prioridade (guardados nas propriedades do script);
  * - a aba Tarefas da página do celular:
- *     "listar" → as tarefas da planilha + o Google Tasks e a Agenda ao vivo + as marcações dos últimos dias;
+ *     "listar" → as tarefas da planilha + o Google Tasks e a Agenda ao vivo + as marcações dos últimos dias + os níveis;
  *     "marcar" → marquei ou desmarquei. Do Google Tasks, conclui lá na hora. Da lista e das tabelas, fica registrada
  *                aqui até o PC escrever no arquivo (a lista manda). Da Agenda, fica só aqui: evento não tem "feito".
  *
@@ -25,9 +26,17 @@
  * vai pro bloco da agenda do dia, "compra" vai pro grupo 🛒 Compras e "lembrança" (uma data que eu guardo, como as
  * da agenda 💘) aparece no topo do dia sem caixa de marcar: não é tarefa. Na primeira vez o tipo é chutado pelo nome
  * (ver tipoDaAgenda e tipoDaLista); trocar na planilha vale na próxima vez que a página buscar.
+ *
+ * Datas (desde 16/11): a planilha fica no jeito do Brasil (fuso de São Paulo e localidade pt_BR) e o próprio script põe
+ * o formato. As colunas "Quando" (Marcações e Envios) ficam em dd/MM/yyyy HH:mm:ss; o "comecou" e o "prazo" da aba
+ * Tarefas, que não têm hora, em dd/MM/yyyy. Formatar a coluna à mão não pegava: a localidade era a dos EUA (11/8/2026
+ * era 8 de novembro), o comecou e o prazo iam como texto ("2026-11-08", que formato de data não muda) e a aba Tarefas
+ * é reescrita a cada envio. Agora eles vão como data de verdade, e o listar devolve "aaaa-mm-dd" pro site, como antes.
  */
 
-const COLUNAS = ['id', 'origem', 'projeto', 'emoji', 'grupo', 'quem', 'situacao', 'texto', 'falta', 'proximo', 'comecou', 'prazo', 'minutos'];
+// nivel (desde 12/11): a prioridade da tarefa, de "🎯1" a "🎯5" no arquivo. area (desde 16/11): a área do projeto (a
+// linha "Área:" da lista), que dá a coluna do Quadro. As novas ficam no fim, então a aba antiga só ganha as colunas.
+const COLUNAS = ['id', 'origem', 'projeto', 'emoji', 'grupo', 'quem', 'situacao', 'texto', 'falta', 'proximo', 'comecou', 'prazo', 'minutos', 'nivel', 'area'];
 const CAB_MARCACOES = ['Quando', 'Marca', 'Id', 'Origem', 'Feita', 'Tarefa', 'O que aconteceu'];
 const CAB_AGENDAS = ['Agenda', 'Mostrar', 'Id', 'Tipo'];
 const CAB_LISTAS = ['Lista', 'Tipo', 'Id'];
@@ -38,6 +47,9 @@ const DIAS_DE_AGENDA = 8;     // hoje + 7
 const DIAS_DE_MARCACOES = 3;  // o que o site mostra como "marquei" além do que já saiu da lista
 const DIAS_DE_MARCACOES_AGENDA = 60; // evento marcado continua marcado enquanto aparece (viagem de vários dias)
 const MAX_EVENTOS = 500;
+const FORMATO_DATA_HORA = 'dd/MM/yyyy HH:mm:ss';
+const FORMATO_DATA = 'dd/MM/yyyy';
+const COLUNAS_DE_DATA = ['comecou', 'prazo']; // na aba Tarefas: data sem hora
 
 /* ---------- entrada ---------- */
 
@@ -87,6 +99,8 @@ function aba(nome, cabecalho) {
   const pl = SpreadsheetApp.getActiveSpreadsheet();
   const fuso = Session.getScriptTimeZone();
   if (pl.getSpreadsheetTimeZone() !== fuso) pl.setSpreadsheetTimeZone(fuso);
+  // a planilha foi criada com a localidade dos EUA: no Brasil a data é dia/mês/ano
+  if (pl.getSpreadsheetLocale() !== 'pt_BR') pl.setSpreadsheetLocale('pt_BR');
   let a = pl.getSheetByName(nome);
   if (!a) {
     a = pl.insertSheet(nome);
@@ -123,6 +137,17 @@ function seguro(s) {
   return /^[=+\-@]/.test(s) ? "'" + s : s;
 }
 
+/** Põe o dd/MM/yyyy HH:mm:ss na coluna "Quando" (a primeira) da aba, do cabeçalho pra baixo, nas linhas que existem. */
+function formatarQuando(a) {
+  if (a.getMaxRows() > 1) a.getRange(2, 1, a.getMaxRows() - 1, 1).setNumberFormat(FORMATO_DATA_HORA);
+}
+
+/** "2026-11-08" → a data (meia-noite no fuso do script, que é o da planilha); vazio ou outro texto → ''. */
+function paraData(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : '';
+}
+
 function linhas(a) {
   const n = a.getLastRow() - 1;
   return n > 0 ? a.getRange(2, 1, n, a.getLastColumn()).getValues() : [];
@@ -132,9 +157,14 @@ function linhas(a) {
 
 function listar() {
   const avisos = [];
+  const tz = Session.getScriptTimeZone();
+  // comecou e prazo vêm como data (desde 16/11) ou como texto (envio de antes): o site recebe sempre "aaaa-mm-dd"
   const tarefas = linhas(aba('Tarefas', COLUNAS)).map(l => {
     const t = {};
-    COLUNAS.forEach((c, i) => { t[c] = c === 'minutos' ? Number(l[i]) || 0 : String(l[i]); });
+    COLUNAS.forEach((c, i) => {
+      const v = l[i];
+      t[c] = c === 'minutos' ? Number(v) || 0 : v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v);
+    });
     return t;
   }).filter(t => t.id);
 
@@ -146,10 +176,16 @@ function listar() {
   return {
     tarefas, google, agenda,
     marcas: marcasRecentes(),
+    niveis: lerNiveisGuardados(),
     enviadoEm: PropertiesService.getScriptProperties().getProperty('ultimoEnvio') || '',
     agora: new Date().toISOString(),
     avisos,
   };
+}
+
+/** Os nomes dos níveis de prioridade que o PC mandou no último envio (a seção "## 🎯 Prioridades" da lista). */
+function lerNiveisGuardados() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('niveis') || '[]'); } catch (err) { return []; }
 }
 
 /** As tarefas abertas de todas as listas do Google Tasks da conta. */
@@ -306,7 +342,9 @@ function marcar(p) {
   }
   const marca = Utilities.getUuid();
   const quando = new Date();
-  aba('Marcações', CAB_MARCACOES).appendRow([quando, marca, p.id, origem, p.feita, seguro(String(p.texto || '').slice(0, 200)), estado]);
+  const m = aba('Marcações', CAB_MARCACOES);
+  m.appendRow([quando, marca, p.id, origem, p.feita, seguro(String(p.texto || '').slice(0, 200)), estado]);
+  m.getRange(m.getLastRow(), 1).setNumberFormat(FORMATO_DATA_HORA);
   return { ok: true, marca, estado, quando: quando.toISOString() };
 }
 
@@ -338,11 +376,13 @@ function enviar(p) {
   if (!Array.isArray(p.tarefas) || p.tarefas.length > 3000) return { erro: 'lista de tarefas inválida' };
   const a = aba('Tarefas', COLUNAS);
   const tz = Session.getScriptTimeZone();
-  const valores = p.tarefas.map(t => COLUNAS.map(c => c === 'minutos' ? Number(t[c]) || 0 : seguro(t[c])));
+  const valores = p.tarefas.map(t => COLUNAS.map(c =>
+    c === 'minutos' ? Number(t[c]) || 0 : COLUNAS_DE_DATA.indexOf(c) >= 0 ? paraData(t[c]) : seguro(t[c])));
   if (a.getLastRow() > 1) a.getRange(2, 1, a.getLastRow() - 1, a.getMaxColumns()).clearContent();
   if (valores.length) {
     const r = a.getRange(2, 1, valores.length, COLUNAS.length);
-    r.setNumberFormat('@'); // datas e códigos ficam como texto, do jeito que vieram
+    r.setNumberFormat('@'); // códigos e textos ficam como vieram (um "1-2" não vira data nem conta)
+    COLUNAS_DE_DATA.forEach(c => a.getRange(2, COLUNAS.indexOf(c) + 1, valores.length, 1).setNumberFormat(FORMATO_DATA));
     r.setValues(valores);
   }
 
@@ -359,6 +399,14 @@ function enviar(p) {
   const e = aba('Envios', CAB_ENVIOS);
   e.appendRow([new Date(), valores.length, (p.aplicadas || []).length, (p.perdidas || []).length]);
   if (e.getLastRow() > 501) e.deleteRows(2, e.getLastRow() - 501);
+  // a cada envio (10 min), as duas colunas "Quando" inteiras: pega as linhas antigas e as que a Envios ganhou ou perdeu
+  formatarQuando(e);
+  formatarQuando(m);
   PropertiesService.getScriptProperties().setProperty('ultimoEnvio', String(p.geradoEm || new Date().toISOString()));
+  // os níveis são poucos (5) e pequenos: cabem numa propriedade do script, sem aba nova
+  if (Array.isArray(p.niveis) && p.niveis.length <= 20) {
+    const niveis = p.niveis.map(x => ({ n: seguro(x.n), emoji: seguro(x.emoji), titulo: seguro(x.titulo), sub: seguro(x.sub) }));
+    PropertiesService.getScriptProperties().setProperty('niveis', JSON.stringify(niveis));
+  }
   return { ok: true, tarefas: valores.length };
 }

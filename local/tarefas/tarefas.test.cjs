@@ -2,7 +2,7 @@
 // Testes da leitura e da volta das marcações, com uma lista e uma tabela inventadas (nada real é lido ou mudado).
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { lerLista, lerTabela, idDaLista } = require('./ler.cjs');
+const { lerLista, lerTabela, lerNiveis, lerAreas, idDaLista } = require('./ler.cjs');
 const { aplicar } = require('./aplicar.cjs');
 
 const HOJE = new Date(2026, 10, 8); // 08/11/2026
@@ -122,4 +122,85 @@ test('marcar na tabela troca só a coluna Situação', () => {
   assert.deepEqual(r.aplicadas, ['m']);
   assert.match(r.texto, /\| DIN-1 \| Mandar a conta \| 🙋 \| ✅ 08\/11 \| mandar \|/);
   assert.equal(lerTabela(r.texto, FIN, { hoje: HOJE })[0].situacao, 'feita');
+});
+
+test('nível de prioridade: o 🎯N da linha e da tabela, sem mudar o id, e os nomes da seção 🎯', () => {
+  const lista = `## 🎯 Prioridades por nível (12/11/2026)
+
+Texto qualquer.
+
+**🔴 1. Prazo nesta semana (perco bolsa, dinheiro ou nota)**
+**⚪ 5. Gaveta**
+- isto é explicação, não é tarefa
+
+## ⚡ Rápidas
+
+- [ ] 🙋 🎯1 **Até 18/11, ProUni.** Falta: clicar no aceite ⏱️ 8min [abcd1234@08/11] ▶️ 08/11
+- [ ] 🙋 **Até 18/11, ProUni.** Falta: clicar no aceite ⏱️ 8min [abcd1234@08/11] ▶️ 08/11
+`;
+  const [com, sem] = lerLista(lista, { hoje: HOJE });
+  assert.equal(com.nivel, '1');
+  assert.equal(sem.nivel, '');
+  assert.equal(com.id, sem.id); // pôr ou trocar o nível não muda o id
+  assert.equal(com.texto, '**Até 18/11, ProUni.**');
+  assert.equal(com.prazo, '2026-11-18');
+  assert.equal(com.quem, '🙋');
+  // a marca citada entre crases é texto, não nível
+  const [citada] = lerLista('## ⚡ Rápidas\n- [ ] 🤖 A visão com o `🎯1` a `🎯5` de cada linha ▶️ 12/11\n', { hoje: HOJE });
+  assert.equal(citada.nivel, '');
+  assert.equal(citada.texto, 'A visão com o `🎯1` a `🎯5` de cada linha');
+
+  assert.deepEqual(lerNiveis(lista), [
+    { n: '1', emoji: '🔴', titulo: 'Prazo nesta semana', sub: 'perco bolsa, dinheiro ou nota' },
+    { n: '5', emoji: '⚪', titulo: 'Gaveta', sub: '' },
+  ]);
+  assert.deepEqual(lerNiveis('## ⚡ Rápidas\n**🔴 1. Fora da seção**\n'), []);
+
+  const tabela = `## Tudo o que está aberto
+
+| Código | O quê | Quem | Situação | Próximo passo |
+|---|---|---|---|---|
+| DIN-4 | Pagar a água | 🙋 | 23 a 25/11 🎯2 | — |
+| DIN-5 | 🎯3 Ver o 13º | 🙋 | ❓ | — |
+`;
+  const [agua, decimo] = lerTabela(tabela, FIN, { hoje: HOJE });
+  assert.equal(agua.nivel, '2');
+  assert.equal(agua.prazo, '2026-11-23');
+  assert.equal(decimo.nivel, '3');
+  assert.equal(decimo.texto, '**DIN-5** Ver o 13º');
+  assert.equal(decimo.situacao, 'decidir');
+});
+
+test('área: a linha "Área:" do projeto vai em todas as tarefas dele, e a tabela usa a que receber', () => {
+  const lista = `## ⚡ Rápidas
+
+- [ ] 🙋 Sem área nenhuma
+
+## 🐧 8. Linux e faculdade
+
+Começou: 03/10/2026 · Status: andando · Área: 🖥️ PC e casa, 🎓 Estudos
+
+- [ ] 🤖 Arrumar o boot
+- [x] 🤖 Já feita ✅ 05/11
+
+## 💰 12. Projeto financeiro
+
+Começou: 13/10/2026 · Status: andando · Área: 💰 Dinheiro
+
+- [ ] 🙋 Esta fica de fora quando a tabela existe
+`;
+  const t = lerLista(lista, { hoje: HOJE });
+  assert.deepEqual(t.map(x => x.area), ['', '🖥️ PC e casa, 🎓 Estudos', '🖥️ PC e casa, 🎓 Estudos', '💰 Dinheiro']);
+  // a linha "Começou:" não vira tarefa nem muda o id
+  assert.equal(t[1].id, idDaLista('Linux e faculdade', 'Arrumar o boot'));
+  assert.deepEqual(lerAreas(lista), { 'Linux e faculdade': '🖥️ PC e casa, 🎓 Estudos', 'Projeto financeiro': '💰 Dinheiro' });
+  const [din] = lerTabela(TABELA, { ...FIN, area: '💰 Dinheiro' }, { hoje: HOJE });
+  assert.equal(din.area, '💰 Dinheiro');
+  assert.equal(lerTabela(TABELA, FIN, { hoje: HOJE })[0].area, '');
+});
+
+test('prazo com o dia da semana antes da data: "**Até seg 16/11 23h59, ...**"', () => {
+  const [com, sem] = lerLista('## 🐧 8. Linux e faculdade\n- [ ] 🙋🤖 🎯1 **Até seg 16/11 23h59, Segurança da TI: AS1** (questionário)\n- [ ] 🙋 **Até qua. 18/11, ProUni.**\n', { hoje: HOJE });
+  assert.equal(com.prazo, '2026-11-16');
+  assert.equal(sem.prazo, '2026-11-18');
 });

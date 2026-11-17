@@ -15,6 +15,16 @@
  *
  * As datas da lista vêm sem ano ("▶️ 07/11"): vale o ano de hoje, ou o anterior se a data cairia mais de 60 dias
  * no futuro (em janeiro, "▶️ 20/12" é dezembro passado).
+ *
+ * Nível de prioridade (desde 12/11): "🎯1" a "🎯5" em qualquer lugar da linha (na lista, logo depois de quem faz; na
+ * tabela, na coluna Situação) põe a tarefa naquele nível. Ele sai do texto antes do id, então trocar o nível não muda
+ * o id. Os nomes dos níveis vêm da seção "## 🎯 Prioridades" da lista mestra (lerNiveis); a aba Tarefas mostra tudo na
+ * visão Níveis. Tarefa sem 🎯 fica fora dela.
+ *
+ * Área (desde 16/11): a linha "Começou: ... · Status: ... · Área: 💼 Carreira, 💰 Dinheiro" logo abaixo do título do
+ * projeto. Toda tarefa do projeto leva a área no campo "area" (o texto inteiro, com as duas quando tem duas); a primeira
+ * é a principal, a coluna onde o projeto fica no Quadro da aba Tarefas. Projeto sem a linha (as Rápidas) sai sem área.
+ * A tabela de um projeto pega a área da seção que ela substitui na lista (lerAreas).
  */
 const crypto = require('node:crypto');
 
@@ -38,6 +48,9 @@ function dataSemAno(dia, mes, hoje) {
   return iso(d);
 }
 
+// "Começou: 11/10/2026 · Status: andando · Área: 🗂️ Organização" → '🗂️ Organização'
+const RE_AREA = /^Começou:.*·\s*Área:\s*(.+?)\s*$/u;
+
 /** Tira o emoji e o número do título da seção: "💼 4. GitHub e LinkedIn" → { emoji: '💼', nome: 'GitHub e LinkedIn' }. */
 function tituloDaSecao(titulo) {
   const i = titulo.indexOf(' ');
@@ -60,12 +73,41 @@ function idDaLista(projeto, texto) {
   return 'l-' + crypto.createHash('sha1').update(`${norm(projeto)}|${chave(texto)}`).digest('hex').slice(0, 10);
 }
 
+// entre crases ("`🎯1`", quando o texto explica a marca) não conta
+const RE_NIVEL = /\s*(?<!`)🎯\s*([1-9])(?![\d`])/u;
+
+/** Tira o "🎯N" do texto: { nivel: 'N' ou '', resto: texto sem a marca }. */
+function tirarNivel(s) {
+  const m = s.match(RE_NIVEL);
+  return m ? { nivel: m[1], resto: (s.slice(0, m.index) + ' ' + s.slice(m.index + m[0].length)).replace(/\s{2,}/g, ' ').trim() } : { nivel: '', resto: s };
+}
+
+/**
+ * Os níveis da seção "## 🎯 Prioridades ..." da lista mestra. Cada nível é uma linha em negrito:
+ *   **🔴 1. Prazo nesta semana (perco bolsa, dinheiro ou nota)**
+ * → { n: '1', emoji: '🔴', titulo: 'Prazo nesta semana', sub: 'perco bolsa, dinheiro ou nota' }.
+ */
+function lerNiveis(texto) {
+  const niveis = [];
+  let dentro = false;
+  for (const linha of texto.split(/\r?\n/)) {
+    if (/^## /.test(linha)) { dentro = /^## 🎯/u.test(linha); continue; }
+    if (!dentro) continue;
+    const m = linha.match(/^\*\*(\S+)\s+([1-9])\.\s*(.+?)\*\*\s*$/u);
+    if (!m) continue;
+    const p = m[3].match(/^(.*?)\s*\((.+)\)\s*$/);
+    niveis.push({ n: m[2], emoji: m[1], titulo: p ? p[1] : m[3], sub: p ? p[2] : '' });
+  }
+  return niveis;
+}
+
 /**
  * Separa as partes de uma linha "- [ ] 🙋 texto. Falta: ... ⏱️ 4min [..] ▶️ 07/11".
  * Devolve o texto limpo (ainda em Markdown leve), o "Falta", quem faz, as datas e os minutos do ⏱️.
  */
 function partesDaLinha(bruto, hoje) {
-  let t = bruto;
+  const { nivel, resto } = tirarNivel(bruto);
+  let t = resto;
   let quem = '';
   const qm = t.match(/^((?:🙋|🤖|💍)+)\s*/u);
   if (qm) { quem = qm[1]; t = t.slice(qm[0].length); }
@@ -88,13 +130,14 @@ function partesDaLinha(bruto, hoje) {
   const fa = texto.match(/(?:^|\s)Falta:\s*/);
   if (fa) { falta = texto.slice(fa.index + fa[0].length).trim(); texto = texto.slice(0, fa.index).trim(); }
 
-  // "**Até 09/11, PUCPR.**" no começo é o prazo (o jeito das Rápidas)
+  // "**Até 09/11, PUCPR.**" no começo é o prazo (o jeito das Rápidas); o dia da semana antes da data também vale
+  // ("**Até seg 16/11 23h59, ...**", o jeito das tarefas da faculdade)
   let prazo = '';
-  const pz = texto.match(/^\*\*Até (\d{1,2})\/(\d{1,2})/);
+  const pz = texto.match(/^\*\*Até (?:(?:seg|ter|qua|qui|sex|s[áa]b|dom)\S*\s+)?(\d{1,2})\/(\d{1,2})/i);
   if (pz) prazo = dataSemAno(+pz[1], +pz[2], hoje);
 
   return {
-    quem, texto, falta, prazo, minutos,
+    quem, texto, falta, prazo, minutos, nivel,
     comecou: im ? dataSemAno(+im[1], +im[2], hoje) : '',
     terminou: fm ? dataSemAno(+fm[1], +fm[2], hoje) : '',
     desistiu: texto.startsWith('~~'),
@@ -114,12 +157,13 @@ function lerLista(texto, { hoje = diaDeTrabalho(), pular = [] } = {}) {
     if ((m = linha.match(/^## (.+)/))) {
       const titulo = m[1].trim();
       // o placar no topo não é projeto
-      secao = titulo.startsWith('📊') ? null : tituloDaSecao(titulo);
+      secao = titulo.startsWith('📊') ? null : { ...tituloDaSecao(titulo), area: '' };
       if (secao && pular.some(p => norm(secao.nome).includes(norm(p)))) secao = null;
       etapa = '';
       return;
     }
     if (!secao) return;
+    if ((m = linha.match(RE_AREA))) { secao.area = m[1]; return; }
     if ((m = linha.match(/^\*\*([^*]+?):?\*\*:?\s*$/))) { etapa = m[1]; return; }
     if ((m = linha.match(/^\s*- \[([ xX])\]\s*(.*)$/))) {
       const p = partesDaLinha(m[2], hoje);
@@ -137,6 +181,8 @@ function lerLista(texto, { hoje = diaDeTrabalho(), pular = [] } = {}) {
         comecou: p.comecou,
         prazo: p.prazo,
         minutos: p.minutos,
+        nivel: p.nivel,
+        area: secao.area,
         _linha: n,
       });
     }
@@ -144,9 +190,22 @@ function lerLista(texto, { hoje = diaDeTrabalho(), pular = [] } = {}) {
   return tarefas;
 }
 
+/** A área de cada projeto da lista mestra, pelo nome: { 'Projeto financeiro': '💰 Dinheiro', ... }. */
+function lerAreas(texto) {
+  const areas = {};
+  let nome = null;
+  for (const linha of texto.split(/\r?\n/)) {
+    let m;
+    if ((m = linha.match(/^## (.+)/))) { nome = tituloDaSecao(m[1].trim()).nome; continue; }
+    if (nome && (m = linha.match(RE_AREA))) { areas[nome] = m[1]; nome = null; }
+  }
+  return areas;
+}
+
 /**
  * Lê a tabela "Tudo o que está aberto" do TAREFAS.md de um projeto.
- * projeto: { nome, emoji, prefixo } (o prefixo vai na frente do código no id: "fin" + "DIN-1").
+ * projeto: { nome, emoji, prefixo, area } (o prefixo vai na frente do código no id: "fin" + "DIN-1"; a área vai em
+ * todas as tarefas da tabela).
  * A coluna Situação usa: ✅ feita · 🔴 tem prazo · ▶️ dd/mm começou · 💤 nunca comecei · ❓ decidir · 💡 ideia.
  */
 function lerTabela(texto, projeto, { hoje = diaDeTrabalho() } = {}) {
@@ -162,8 +221,11 @@ function lerTabela(texto, projeto, { hoje = diaDeTrabalho() } = {}) {
     const celulas = m[2].split('|').map(s => s.trim());
     if (celulas.length < 4) return;
     // se o texto tiver uma barra, as colunas de mais vão pro "O quê"
-    const [oque, quem, sit, prox] = celulas.length === 4 ? celulas
+    const [oque0, quem, sit0, prox] = celulas.length === 4 ? celulas
       : [celulas.slice(0, celulas.length - 3).join(' | '), ...celulas.slice(-3)];
+    // o "🎯N" pode estar na Situação ou no O quê; sai do texto dos dois
+    const nOque = tirarNivel(oque0), nSit = tirarNivel(sit0);
+    const oque = nOque.resto, sit = nSit.resto, nivel = nSit.nivel || nOque.nivel;
 
     const iniciou = sit.match(/▶️?\s*(\d{1,2})\/(\d{1,2})/u);
     // prazo é a data logo depois do 🔴 ("🔴 até 10/11", "🔴 09 e 10/11") ou a que abre a célula ("23 a 25/11");
@@ -190,6 +252,8 @@ function lerTabela(texto, projeto, { hoje = diaDeTrabalho() } = {}) {
       comecou: iniciou ? dataSemAno(+iniciou[1], +iniciou[2], hoje) : '',
       prazo: pz && !sit.includes('✅') ? dataSemAno(+pz[1], +pz[2], hoje) : '',
       minutos: 0,
+      nivel,
+      area: projeto.area || '',
       _linha: n,
       _codigo: m[1],
     });
@@ -202,4 +266,4 @@ function publico(t) {
   return Object.fromEntries(Object.entries(t).filter(([k]) => !k.startsWith('_')));
 }
 
-module.exports = { lerLista, lerTabela, publico, diaDeTrabalho, idDaLista, chave, iso, ddmm, dataSemAno };
+module.exports = { lerLista, lerTabela, lerNiveis, lerAreas, publico, diaDeTrabalho, idDaLista, chave, iso, ddmm, dataSemAno };

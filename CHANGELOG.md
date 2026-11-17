@@ -1,5 +1,27 @@
 # Histórico do projeto
 
+## 2026-11-16 — Quadro: as áreas dos projetos lado a lado
+
+- `local/tarefas/ler.cjs`: o campo `area` em cada tarefa, da linha `Começou: … · Área: …` do projeto na lista mestra, e `lerAreas`, que dá a área de cada projeto pelo nome. O `sincronizar.cjs` passa pra tabela do financeiro a área da seção que ela substitui, e o `--ver` conta as tarefas por área.
+- `apps-script-tarefas/Codigo.gs`: a coluna `area` no fim da aba Tarefas.
+- `site/aba-tarefas.html`: a visão **Quadro**, com uma coluna por área, os projetos dentro e a faixa da etapa em cada tarefa (com prazo, fazendo, a fazer, ideia ou decidir). Tem ainda as pílulas que levam até cada coluna e o atalho do projeto com duas áreas. Enquanto o Apps Script não for atualizado, a área vem da foto.
+- Na frente do Quadro, a coluna **🔴 Vence agora**: prazo vencido ou nos próximos 3 dias, tirado da coluna da área (cada cartão num lugar só).
+- O prazo com o dia da semana antes da data ("**Até seg 16/11 23h59, ...**", o jeito das tarefas da faculdade) agora é lido; as duas AS1 de 16/11 estavam sem prazo e não apareciam no Hoje.
+- Dois testes novos (26 no total).
+- À noite, o Apps Script subiu na versão 6 (no mesmo deployment), com os níveis de 12/11, a área e as datas. Conferido na planilha em 17/11.
+
+## 2026-11-16 — Datas da planilha Tarefas no jeito do Brasil
+
+- `apps-script-tarefas/Codigo.gs`: a planilha passa pra localidade pt_BR (era a dos EUA: 11/8/2026 era 8 de novembro), e o próprio script põe o formato: dd/MM/yyyy HH:mm:ss nas colunas "Quando" de Marcações e Envios, e dd/MM/yyyy no comecou e no prazo da aba Tarefas. Esses dois iam como texto ("2026-11-08"), que o formato de data não muda, e a aba é reescrita a cada envio; formatar a coluna à mão não pegava por isso. Agora vão como data, e o `listar` devolve "aaaa-mm-dd" pro site, como antes.
+
+## 2026-11-12 — Níveis de prioridade na aba Tarefas
+
+- A lista mestra ganhou a seção "## 🎯 Prioridades por nível", com os nomes dos níveis em negrito (`**🔴 1. Prazo nesta semana (legenda)**`), e cada tarefa pode levar `🎯1` a `🎯5` na linha (na tabela de um projeto, na coluna Situação).
+- `local/tarefas/ler.cjs`: o campo `nivel` em cada tarefa (o 🎯 sai do texto antes do id, então trocar o nível não muda o id) e `lerNiveis`, que lê os nomes da seção. O `sincronizar.cjs` manda os níveis junto pra planilha e grava na foto; o `--ver` conta as tarefas por nível.
+- `apps-script-tarefas/Codigo.gs`: a coluna `nivel` no fim da aba Tarefas e os nomes dos níveis numa propriedade do script, devolvidos pelo `listar`.
+- `site/aba-tarefas.html`: a visão **Níveis** (entre Hoje e Semana), nível por nível, com prazo primeiro e as paradas há mais tempo depois; a gaveta (o último nível) fechada; as feitas e a contagem do que ficou sem nível no fim. Enquanto o Apps Script não for atualizado, o nível vem da foto que vai dentro da página.
+- Um teste novo (nove no total).
+
 ## 2026-11-08 — Tarefas num lugar só: aba no site do celular, planilha e App da Web
 
 - `local/tarefas/`: leitura da lista mestra e da tabela de códigos dos projetos num formato único, com id estável (o código, ou projeto + começo do texto na lista); volta das marcações do celular pros arquivos (`[x]`, `✅ dd/mm`); `npm run tarefas` e `npm run tarefas:ver`.

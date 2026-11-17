@@ -9,7 +9,25 @@ Criar e acompanhar tarefas no computador e no Chrome do iPhone 11, sem instalar 
 
 ## O que existe no código
 
-### Entrega atual: Tarefas num lugar só (08/11/2026)
+### Entrega atual: Quadro, as áreas lado a lado (16/11/2026)
+
+**Implementado:** a visão Quadro da aba ✅ Tarefas, depois do Tudo. Uma coluna por área (a linha `Área:` de cada projeto da lista mestra; a tabela do financeiro pega a da seção que ela substitui), na ordem em que aparecem, com "Sem área" (as Rápidas e as listas do Google Tasks) no fim. Na coluna: o resumo por etapa (com prazo, fazendo, a fazer, ideia ou decidir) e os projetos, cada um com as 4 primeiras tarefas e o "Mostrar as outras". A faixa na esquerda da tarefa diz a etapa (vermelha quando o prazo passou). Na frente, a coluna 🔴 Vence agora (prazo vencido ou nos próximos 3 dias), tirada das áreas. Projeto com duas áreas fica inteiro na primeira e vira um atalho na outra. As pílulas no topo levam até a coluna. No celular o quadro desliza de lado e encaixa numa coluna; a posição fica guardada quando a página redesenha. A busca também procura pela área.
+
+**Decisões:** as colunas são as áreas, e a etapa do kanban fica dentro delas, como faixa e ordem, porque o pedido foi ver as áreas lado a lado. Nada aparece duas vezes (o atalho evita contar a mesma tarefa em duas colunas). Agenda e compras ficam de fora, porque não são de projeto.
+
+**Datas da planilha (16/11):** localidade pt_BR, "Quando" em dd/MM/yyyy HH:mm:ss e comecou/prazo da aba Tarefas como data em dd/MM/yyyy, postos pelo script (ver o comentário do topo do `Codigo.gs`).
+
+**No ar:** o Apps Script subiu na versão 6 em 16/11 à noite, no mesmo deployment (o endereço não mudou). Conferido em 17/11: a planilha tem as colunas `nivel` e `area` e as datas no formato do Brasil.
+
+**Falta:** abrir o Quadro e a visão Níveis no iPhone e no PC e ver se a arrumação serve.
+
+### Entrega anterior: Níveis de prioridade (12/11/2026)
+
+**Implementado:** a visão Níveis da aba ✅ Tarefas. Os nomes vêm da seção "## 🎯 Prioridades por nível" da lista mestra, e cada tarefa entra num nível com `🎯1` a `🎯5` na linha (ou na coluna Situação da tabela de um projeto). Sem 🎯, a tarefa fica só no Tudo.
+
+**No ar desde 16/11** (Apps Script versão 6): a planilha guarda a coluna `nivel` e os nomes. Antes disso, o nível vinha da foto da página, que é publicada a cada busca do financeiro (9h, 21h e quando o PC liga), e não a cada 10 min.
+
+### Entrega anterior: Tarefas num lugar só (08/11/2026)
 
 **Implementado:** a aba ✅ Tarefas na página do celular do financeiro (mesmo endereço, mesma senha), a planilha Tarefas com o App da Web (`apps-script-tarefas/`) e a sincronização do PC (`local/tarefas/`). Fontes: a lista mestra, a tabela de códigos do financeiro (a seção do financeiro na lista fica de fora, porque a tabela já junta as abertas de lá), o Google Tasks e a Agenda, lidos ao vivo pelo Apps Script. Marcar no celular: Google Tasks conclui lá; lista e tabela ficam na aba Marcações até o PC escrever no arquivo; Agenda fica só na planilha.
 

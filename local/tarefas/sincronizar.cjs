@@ -11,8 +11,8 @@
  * A volta completa:
  * 1. pega na planilha as marcações do celular que ainda não chegaram nos arquivos (acao "pendentes");
  * 2. escreve cada uma na lista ou na tabela do projeto (aplicar.cjs). A lista manda: a planilha é o caminho;
- * 3. lê de novo os arquivos e manda as tarefas abertas (acao "enviar"), junto com quais marcações entraram e quais
- *    não acharam a linha;
+ * 3. lê de novo os arquivos e manda as tarefas abertas (acao "enviar"), junto com quais marcações entraram, quais
+ *    não acharam a linha e os nomes dos níveis de prioridade (a seção "## 🎯 Prioridades" da lista);
  * 4. grava a foto (~/.config/task-tracker/foto.json), que a página do celular leva junto pra abrir mesmo sem internet.
  *
  * O Google Tasks e a Agenda não passam por aqui: o Apps Script lê os dois ao vivo quando a página abre.
@@ -23,7 +23,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { lerLista, lerTabela, publico } = require('./ler.cjs');
+const { lerLista, lerTabela, lerNiveis, lerAreas, publico } = require('./ler.cjs');
 const { aplicar } = require('./aplicar.cjs');
 
 const PASTA = path.join(os.homedir(), '.config', 'task-tracker');
@@ -64,20 +64,28 @@ function gravarArquivo(arquivo, texto) {
   fs.renameSync(tmp, arquivo);
 }
 
-/** Todas as tarefas dos arquivos (feitas também). */
+/**
+ * Todas as tarefas dos arquivos (feitas também) e os níveis de prioridade da lista mestra.
+ * A tabela de um projeto leva a área que estiver no tarefas.json (campo "area") ou, sem ela, a da seção da lista que a
+ * tabela substitui (a linha "Área:" do "## 💰 12. Projeto financeiro").
+ */
 function lerTudo(cfg) {
   const pular = [];
   const tarefas = [];
+  const lista = casa(cfg.lista);
+  const textoLista = fs.existsSync(lista) ? fs.readFileSync(lista, 'utf8') : '';
+  const areas = Object.entries(lerAreas(textoLista));
+  const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   for (const tb of cfg.tabelas) {
     const arq = casa(tb.arquivo);
     if (!fs.existsSync(arq)) continue;
-    const lidas = lerTabela(fs.readFileSync(arq, 'utf8'), tb);
+    const daLista = tb.naLista && areas.find(([nome]) => norm(nome).includes(norm(tb.naLista)));
+    const lidas = lerTabela(fs.readFileSync(arq, 'utf8'), { ...tb, area: tb.area || (daLista ? daLista[1] : '') });
     if (lidas.length && tb.naLista) pular.push(tb.naLista);
     tarefas.push(...lidas);
   }
-  const lista = casa(cfg.lista);
-  const daLista = fs.existsSync(lista) ? lerLista(fs.readFileSync(lista, 'utf8'), { pular }) : [];
-  return { tarefas: [...daLista, ...tarefas], pular };
+  const daLista = textoLista ? lerLista(textoLista, { pular }) : [];
+  return { tarefas: [...daLista, ...tarefas], pular, niveis: lerNiveis(textoLista) };
 }
 
 async function chamar(cfg, acao, dados = {}) {
@@ -148,14 +156,14 @@ async function sincronizar() {
   }
 
   // a foto sai mesmo sem o Google: a página do celular leva ela e abre com a lista mais nova que o PC tem
-  const { tarefas } = lerTudo(cfg);
+  const { tarefas, niveis } = lerTudo(cfg);
   const { abertas } = resumo(tarefas);
   const geradoEm = new Date().toISOString();
   fs.mkdirSync(PASTA, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(FOTO, JSON.stringify({ geradoEm, tarefas: abertas.map(publico) }) + '\n', { mode: 0o600 });
+  fs.writeFileSync(FOTO, JSON.stringify({ geradoEm, tarefas: abertas.map(publico), niveis }) + '\n', { mode: 0o600 });
   if (falhou) throw falhou;
 
-  await chamar(cfg, 'enviar', { tarefas: abertas.map(publico), geradoEm, aplicadas: r.aplicadas, perdidas: r.perdidas });
+  await chamar(cfg, 'enviar', { tarefas: abertas.map(publico), niveis, geradoEm, aplicadas: r.aplicadas, perdidas: r.perdidas });
 
   console.log(`✔ ${abertas.length} tarefas abertas na planilha.`);
   if (r.aplicadas.length) console.log(`✔ ${r.aplicadas.length} marcação(ões) do celular passada(s) pra ${r.mudou.map(a => path.basename(path.dirname(a)) + '/' + path.basename(a)).join(', ')}.`);
@@ -164,9 +172,19 @@ async function sincronizar() {
 
 function ver() {
   const cfg = lerConfig();
-  const { tarefas, pular } = lerTudo(cfg);
+  const { tarefas, pular, niveis } = lerTudo(cfg);
   const { abertas, porProjeto } = resumo(tarefas);
   console.log(`${abertas.length} tarefas abertas (de ${tarefas.length} lidas).`);
+  if (niveis.length) {
+    console.log('Por nível de prioridade (🎯):');
+    for (const nv of niveis) console.log(`  ${String(abertas.filter(t => t.nivel === nv.n).length).padStart(3)}  ${nv.emoji} ${nv.n}. ${nv.titulo}`);
+    console.log(`  ${String(abertas.filter(t => !t.nivel).length).padStart(3)}  sem nível`);
+  }
+  // a área principal é a primeira ("🖥️ PC e casa, 🎓 Estudos" → coluna 🖥️ PC e casa no Quadro)
+  const porArea = {};
+  for (const t of abertas) { const a = (t.area || 'sem área').split(',')[0].trim(); porArea[a] = (porArea[a] || 0) + 1; }
+  console.log('Por área (a coluna do Quadro):');
+  for (const [a, n] of Object.entries(porArea).sort((x, y) => y[1] - x[1])) console.log(`  ${String(n).padStart(3)}  ${a}`);
   if (pular.length) console.log(`Da lista mestra ficou de fora a seção "${pular.join('", "')}" (vem da tabela do projeto).`);
   for (const [p, n] of Object.entries(porProjeto).sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(3)}  ${p}`);
   const ids = new Map();
